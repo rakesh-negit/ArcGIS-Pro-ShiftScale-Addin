@@ -1,12 +1,6 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
-<ArcGIS defaultAssembly="ShiftScaleAddin.dll"
-        defaultNamespace="ShiftScaleAddin"
-        xmlns="http://schemas.esri.com/DADF/Registry"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://schemas.esri.com/DADF/Registry file:///C:/Program%20Files/ArcGIS/Pro/bin/ArcGIS.Desktop.Framework.xsd">
-
+﻿<ArcGIS defaultAssembly="ShiftScaleAddin.dll" defaultNamespace="ShiftScaleAddin" xmlns="http://schemas.esri.com/DADF/Registry" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://schemas.esri.com/DADF/Registry file:///C:/Program%20Files/ArcGIS/Pro/bin/ArcGIS.Desktop.Framework.xsd">
   <AddInInfo id="{02a39031-f3e4-41df-b0f2-0fb8180a1ec1}" version="1.0" desktopVersion="2.0.8933">
-    <Name>ShiftScaleAddin</Name>   
+    <Name>ShiftScaleAddin</Name>
     <Description>ShiftScaleAddin description</Description>
     <Image>Images\AddinDesktop32.png</Image>
     <Author>nueyoshiaki</Author>
@@ -16,7 +10,6 @@
     <!-- Note subject can be one or more of these topics:
                     Content, Framework, Editing, Geodatabase, Geometry, Geoprocessing, Layouts, Map Authoring, Map Exploration -->
   </AddInInfo>
-
   <modules>
     <insertModule id="ShiftScaleAddin_Module" className="Module1" autoLoad="false" caption="Module1">
       <!-- uncomment to have the control hosted on a separate tab-->
@@ -25,19 +18,30 @@
           <group refID="ShiftScaleAddin_Group1"/>
         </tab>-->
       </tabs>
-              
       <groups>
         <!-- comment this out if you have no controls on the Addin tab to avoid
               an empty group-->
         <group id="ShiftScaleAddin_Group1" caption="Group 1" appearsOnAddInTab="true">
           <!-- host controls within groups -->
+          <tool refID="ShiftScaleAddin_ShiftScaleTool" size="large" />
         </group>
       </groups>
-      
       <controls>
-        <!-- add your controls here -->
-      </controls> 
-      
+        <tool id="ShiftScaleAddin_ShiftScaleTool" caption="ShiftScaleTool" className="ShiftScaleTool" loadOnClick="true" smallImage="Images\GenericButtonRed16.png" largeImage="Images\GenericButtonRed32.png" condition="esri_mapping_mapPane" categoryRefID="esri_editing_CommandList">
+          <!--set the categoryRefID to "esri_editing_CommandList" for this to be listed in Modify Features pane-->
+          <tooltip heading="Tooltip Heading">Shift and Scale objects<disabledText /></tooltip>
+          <!--put this tool under Alignment group in Modify Features pane-->
+          <content L_group="Alignment" />
+        </tool>
+      </controls>
     </insertModule>
   </modules>
+  <categories>
+    <updateCategory refID="esri_embeddableControls">
+      <!--take note of the id for this control as you will reference it in the Controller-->
+      <insertComponent id="ShiftScaleAddin_AttributeControl" className="AttributeControlViewModel">
+        <content className="AttributeControlView" />
+      </insertComponent>
+    </updateCategory>
+  </categories>
 </ArcGIS>

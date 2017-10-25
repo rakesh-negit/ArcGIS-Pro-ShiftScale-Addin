@@ -1,18 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Mapping;
-using ArcGIS.Desktop.Framework;
-using ArcGIS.Desktop.Framework.Contracts;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Core.Data;
 
 namespace ShiftScaleAddin {
     internal class ShiftScaleTool : MapTool {
         public const string ID_embeddable_control = "ShiftScaleAddin_AttributeControl";
-
         #region Note
         // the most important methods in this class are:
         // 1. OnSketchCompleted
@@ -25,6 +21,13 @@ namespace ShiftScaleAddin {
         #endregion
 
         private AttributeControlViewModel _attributeViewModel = null;
+
+        // differentiate between the user selecting rectangle vs the point
+        private enum DrawingStage {
+            SelectingFeatures,
+            SelectingPoint
+        }
+        private DrawingStage currentStage;
 
         public ShiftScaleTool() {
 
@@ -40,53 +43,72 @@ namespace ShiftScaleAddin {
 
             // specify the (inherited) ID for the embeddable content AS DECLARED IN config.daml
             // AND specified in the AttributeCotrol.xaml and AttributeControlViewModel
-            // for the view model.
+            // for the view model. We use this ControlID to retrieve the EmbeddableControl
             ControlID = ID_embeddable_control;
-            
         }
 
         /// <summary>
         /// prepares the content for the embeddable control when this tool is activated (i.e. when this tool is clicked). This is the ENTRY POINT!
         /// This class is changed to return async
         /// </summary>
-        protected override async Task OnToolActivateAsync(bool active) {
+        protected override Task OnToolActivateAsync(bool active) {
+            // let the user sketch a rectangle first
+            currentStage = DrawingStage.SelectingFeatures; 
 
             if (_attributeViewModel == null)
                 _attributeViewModel = this.EmbeddableControl as AttributeControlViewModel;
-            // this.EmbeddableControl is the one with ID set as ControlID (see constructor)
 
-            //return base.OnToolActivateAsync(active);
-            // INITIATE the task to execute on the MCT (Main CIM Thread)
-            // all Geospatial API MUST BE passed on to QueuedTask.Run, or it will
-            // throw exception
-            await QueuedTask.Run( () => {
-                // get the selection in dictionary form
-                var selectionInMap = ActiveMapView.Map.GetSelection();
-                var pointLayer = ActiveMapView.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>().Where(layer => layer.ShapeType == ArcGIS.Core.CIM.esriGeometryType.esriGeometryPoint).FirstOrDefault();
+            _attributeViewModel.UserPromptText = "Make a selection";
+            _attributeViewModel.HasUserSelectedFeatures = false;
 
-                
-                if (pointLayer != null) {
-                    
-                    if (selectionInMap.ContainsKey(pointLayer)) {
-                        // if the point layer contains selected features
-                        var selectionDictionary = new Dictionary<MapMember, List<long>>();
-                        selectionDictionary.Add(pointLayer as MapMember, selectionInMap[pointLayer]);
-
-                        // store this in the view model to populate the tree view
-                        _attributeViewModel.SelectedFeatures = selectionDictionary;
-
-                        // load the FIRST selected point feature (thus using [0])
-                        _attributeViewModel.AttributeInspector.Load(pointLayer, selectionInMap[pointLayer][0]);
-                    }
-                }
-
-                return Task.FromResult(true);
-
-            } );
+            return base.OnToolActivateAsync(active);
         }
 
+        protected override Task OnToolDeactivateAsync(bool hasMapViewChanged) {
+            _attributeViewModel = null;
+            return Task.FromResult(true);
+        }
+
+        /// <summary>
+        /// This method is event handler which is called when the user completes
+        /// drawing on the map.
+        /// </summary>
         protected override Task<bool> OnSketchCompleteAsync(Geometry geometry) {
-            return base.OnSketchCompleteAsync(geometry);
+            // select the first point feature layer in the active map
+            var pointLayer = ActiveMapView.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>().Where(layer => layer.ShapeType == ArcGIS.Core.CIM.esriGeometryType.esriGeometryPoint).FirstOrDefault();
+
+            if (pointLayer == null)
+                return Task.FromResult(true);
+
+            // execute on the MCT (Main CIM Thread). All Geospatial API MUST BE passed on to QueuedTask.Run as follows, or it will throw exception
+            QueuedTask.Run(() => {
+                var spatialQuery = new SpatialQueryFilter() {
+                    // use the selected geometry to filter out elements outside the geometry
+                    FilterGeometry = geometry, 
+                    SpatialRelationship = SpatialRelationship.Contains
+                };
+                
+                // apply the spatial filter to the pointLayer
+                var pointSelection = pointLayer.Select(spatialQuery);
+                List<long> oids = pointSelection.GetObjectIDs().ToList();
+                if (oids.Count == 0)
+                    return;
+
+                var selectionDictionary = new Dictionary<MapMember, List<long>>();
+                selectionDictionary.Add(pointLayer as MapMember, pointSelection.GetObjectIDs().ToList());
+
+                // assign the dictionary to the ViewModel such that the View will update
+                _attributeViewModel.SelectedFeatures = selectionDictionary;
+
+            }); // end Run
+
+            // now that the user has made selection, change the message
+            _attributeViewModel.UserPromptText = "Change the selection";
+
+            // and display additional UI
+            _attributeViewModel.HasUserSelectedFeatures = true;
+
+            return Task.FromResult(true);
 
             // TODO: There has to be some EditOperation for us to actually move the objects
             // to the selected point
@@ -101,7 +123,6 @@ namespace ShiftScaleAddin {
             Most likely be using EditOperation.Transform() to move stuff
             */
         }
-
 
     }
 }

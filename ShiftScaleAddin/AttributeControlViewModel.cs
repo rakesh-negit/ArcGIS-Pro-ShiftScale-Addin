@@ -7,32 +7,7 @@ using ArcGIS.Desktop.Editing.Attributes;
 
 namespace ShiftScaleAddin {
     internal class AttributeControlViewModel : EmbeddableControl {
-        private EmbeddableControl _inspectorViewModel = null;
-        public EmbeddableControl InspectorViewModel {
-            get { return _inspectorViewModel; }
-            set {
-                if (value != null) {
-                    _inspectorViewModel = value;
-                    _inspectorViewModel.OpenAsync();
 
-                }
-                else if (_inspectorViewModel != null) {
-                    _inspectorViewModel.CloseAsync();
-                    _inspectorViewModel = value;
-                }
-                NotifyPropertyChanged(() => InspectorViewModel);
-            }
-        }
-
-        private UserControl _inspectorView = null;
-        public UserControl InspectorView {
-            get { return _inspectorView; }
-            set {
-                SetProperty(ref _inspectorView, value, () => InspectorView);
-            }
-        }
-
-        // this dictionary contains the selected features in the map to populate the tree view for layres and respective selected features.
         private Dictionary<MapMember, List<long>> _selectedFeatures = null;
         public Dictionary<MapMember, List<long>> SelectedFeatures {
             get { return _selectedFeatures; }
@@ -43,29 +18,26 @@ namespace ShiftScaleAddin {
 
         }
 
-        public Inspector AttributeInspector { get; }
-
-        public AttributeControlViewModel(XElement options, bool canChangeOptions) : base(options, canChangeOptions) {
-
-            // create a new instance for the inspector. This is used a lot in ShiftScaleTool
-            AttributeInspector = new Inspector();
-            // create an embeddable control from the inspector class to display on the pane
-            var icontrol = AttributeInspector.CreateEmbeddableControl();
-
-            // get view and viewmodel from the inspector
-            InspectorView = icontrol.Item2;
-            InspectorViewModel = icontrol.Item1;
+        /// <summary>
+        /// Message that prompts user to make/change selection
+        /// </summary>
+        private string _userPromptText = null;
+        public string UserPromptText {
+            get { return _userPromptText; }
+            set {
+                SetProperty(ref _userPromptText, value, () => UserPromptText);
+            }
         }
 
-        /// <summary>
-        /// Text shown in the control.
-        /// </summary>
-        private string _text = "Embeddable Control";
-        public string Text {
-            get { return _text; }
+        private bool _hasUserSelectedFeatures;
+        public bool HasUserSelectedFeatures {
+            get { return _hasUserSelectedFeatures; }
             set {
-                SetProperty(ref _text, value, () => Text);
+                SetProperty(ref _hasUserSelectedFeatures, value, () => HasUserSelectedFeatures);
             }
+        }
+
+        public AttributeControlViewModel(XElement options, bool canChangeOptions) : base(options, canChangeOptions) {
         }
     }
 }

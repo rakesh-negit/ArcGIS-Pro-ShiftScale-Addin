@@ -6,17 +6,91 @@
              xmlns:ui="clr-namespace:ShiftScaleAddin"
              xmlns:extensions="clr-namespace:ArcGIS.Desktop.Extensions;assembly=ArcGIS.Desktop.Extensions"
              mc:Ignorable="d" 
-             d:DesignHeight="300" d:DesignWidth="300"
+             d:DesignHeight="400" d:DesignWidth="300"
              d:DataContext="{Binding Path=ui.AttributeControlViewModel}">
-   
     <UserControl.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <extensions:DesignOnlyResourceDictionary Source="pack://application:,,,/ArcGIS.Desktop.Framework;component\Themes\Default.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
         </ResourceDictionary>
+        
     </UserControl.Resources>
+            
     <Grid>
-        <TextBlock Text="{Binding Text}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="4"/>
+        <Border BorderBrush="{DynamicResource Esri_Gray125}" BorderThickness="2">
+            <DockPanel LastChildFill="False" Margin="2">
+                <!--<TextBlock Name="UserPrompt" Width="auto" Text="{Binding UserPromptText}" DockPanel.Dock="Top" />-->
+
+                <Button Style="{DynamicResource Esri_Button}" VerticalAlignment="Top" Width="200"  Content="{Binding UserPromptText}" DockPanel.Dock="Top" Height="auto"      Click="SelectionButton_OnClicked" />
+
+                <TreeView x:Name="treeView" VerticalAlignment="Top" Width="Auto" DockPanel.Dock="Top" ItemsSource="{Binding SelectedFeatures}" SelectedItemChanged="treeView_SelectedItemChanged"
+                          Style="{DynamicResource {x:Type TreeView}}" Height="auto">
+                    <TreeView.ItemContainerStyle>
+                        <Style TargetType="{x:Type TreeViewItem}">
+                            <Setter Property="IsExpanded" Value="True" />
+                        </Style>
+                    </TreeView.ItemContainerStyle>
+                    <TreeView.ItemTemplate >
+                        <HierarchicalDataTemplate ItemsSource="{Binding Path=Value}" >
+                            <TreeViewItem Header="{Binding Path=Key}" Foreground="{DynamicResource Esri_Gray155}" FontStyle="Italic" FontWeight="Bold" />
+                            <HierarchicalDataTemplate.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" Style="{DynamicResource ProTextStyle}"/>
+                                </DataTemplate>
+                            </HierarchicalDataTemplate.ItemTemplate>
+                        </HierarchicalDataTemplate>
+                    </TreeView.ItemTemplate>
+                </TreeView>
+                <DockPanel Margin="5" Width="auto" DockPanel.Dock="Top" Visibility="{Binding HasUserSelectedFeatures, Converter={StaticResource BoolToVisibility}}">
+                    <Button DockPanel.Dock="Top" Name="ControlButton" Style="{DynamicResource Esri_Button}" Height="30" Content="Pick Control Point"></Button>
+                
+                    <TextBlock Name="AlignMessage" Style="{DynamicResource Esri_TextBlockDialog}" DockPanel.Dock="Top" Margin="0 5">Align control point to</TextBlock>
+                    <Grid DockPanel.Dock="Top" Width="200" Margin="10">
+                        <Grid.RowDefinitions>
+                            <RowDefinition />
+                            <RowDefinition />
+                            <RowDefinition />
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="0.1*"/>
+                            <ColumnDefinition />
+                            <ColumnDefinition Width="0.5*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0">X: </TextBlock>
+                        <TextBox Grid.Row="0" Grid.Column="1" Name="X_Value"></TextBox>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0">Y: </TextBlock>
+                        <TextBox Grid.Row="1" Grid.Column="1" Name="Y_Value"></TextBox>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0">Z: </TextBlock>
+                        <TextBox Grid.Row="2" Grid.Column="1" Name="Z_Value"></TextBox>
+
+                        <ComboBox Grid.Row="0" Grid.Column="2" Background="{DynamicResource Esri_BorderBrush}" SelectionChanged="ComboBox_SelectionChanged" >
+                            <ComboBoxItem>m</ComboBoxItem>
+                            <ComboBoxItem>m</ComboBoxItem>
+                            <ComboBoxItem>m</ComboBoxItem>
+                        </ComboBox>
+                        <ComboBox Grid.Row="1" Grid.Column="2" Background="{DynamicResource Esri_BorderBrush}">
+                            <ComboBoxItem>m</ComboBoxItem>
+                            <ComboBoxItem>m</ComboBoxItem>
+                            <ComboBoxItem>m</ComboBoxItem>
+                        </ComboBox>
+                        <ComboBox Grid.Row="2" Grid.Column="2" Background="{DynamicResource Esri_BorderBrush}">
+                            <ComboBoxItem>m</ComboBoxItem>
+                            <ComboBoxItem>m</ComboBoxItem>
+                            <ComboBoxItem>m</ComboBoxItem>
+                        </ComboBox>
+                    </Grid>
+                    
+                    <TextBlock>Scale: </TextBlock>
+                    <TextBox Width="100" Name="Scale_value" TextChanged="Scale_value_TextChanged"></TextBox>
+                </DockPanel>
+                <DockPanel DockPanel.Dock="Right" LastChildFill="False">
+                    <Button DockPanel.Dock="Bottom" Style="{DynamicResource Esri_Button}" Width="100" Height="20">Shift and Scale</Button>
+                </DockPanel>
+                </DockPanel>
+        </Border>
     </Grid>
 </UserControl>

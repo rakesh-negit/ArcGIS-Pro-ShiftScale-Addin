@@ -44,7 +44,7 @@
                     </TreeView.ItemTemplate>
                 </TreeView>
                 <DockPanel Margin="5" Width="auto" DockPanel.Dock="Top" Visibility="{Binding HasUserSelectedFeatures, Converter={StaticResource BoolToVisibility}}">
-                    <Button DockPanel.Dock="Top" Name="ControlButton" Style="{DynamicResource Esri_Button}" Height="30" Content="Pick Control Point"></Button>
+                    <Button DockPanel.Dock="Top" Name="ControlButton" Style="{DynamicResource Esri_Button}" Height="30" Content="Pick Control Point" Command="{Binding PickControlCommand}"></Button>
                 
                     <TextBlock Name="AlignMessage" Style="{DynamicResource Esri_TextBlockDialog}" DockPanel.Dock="Top" Margin="0 5">Align control point to</TextBlock>
                     <Grid DockPanel.Dock="Top" Width="200" Margin="10">
@@ -88,7 +88,7 @@
                     <TextBox Width="100" Name="Scale_value" TextChanged="Scale_value_TextChanged"></TextBox>
                 </DockPanel>
                 <DockPanel DockPanel.Dock="Right" LastChildFill="False">
-                    <Button DockPanel.Dock="Bottom" Style="{DynamicResource Esri_Button}" Width="100" Height="20">Shift and Scale</Button>
+                    <Button DockPanel.Dock="Bottom" Style="{DynamicResource Esri_Button}" Width="100" Height="20" Command="{Binding ShiftControlCommand}">Shift and Scale</Button>
                 </DockPanel>
                 </DockPanel>
         </Border>

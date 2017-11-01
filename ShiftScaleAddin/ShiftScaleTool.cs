@@ -5,6 +5,7 @@ using ArcGIS.Core.Geometry;
 using ArcGIS.Desktop.Mapping;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Core.Data;
+using ArcGIS.Desktop.Editing;
 
 namespace ShiftScaleAddin {
     internal class ShiftScaleTool : MapTool {
@@ -21,20 +22,15 @@ namespace ShiftScaleAddin {
         #endregion
 
         private AttributeControlViewModel _attributeViewModel = null;
-
-        // differentiate between the user selecting rectangle vs the point
-        private enum DrawingStage {
-            SelectingFeatures,
-            SelectingPoint
-        }
-        private DrawingStage currentStage;
+        private MapPoint CurrentControlPoint;
 
         public ShiftScaleTool() {
 
             // indicate that you need feedback graphics
             IsSketchTool = true;
 
-            // type is set to rectangle => user chooses top-left & bottom right points
+            // type is initially set to rectangle => user chooses top-left & bottom right points
+            // use this attribute to also distinguish what the user has drawn, point or rectangle
             SketchType = SketchGeometryType.Rectangle;
 
             // the cooridnate of the sketched rectangle is returned in map coordinates.
@@ -49,14 +45,13 @@ namespace ShiftScaleAddin {
 
         /// <summary>
         /// prepares the content for the embeddable control when this tool is activated (i.e. when this tool is clicked). This is the ENTRY POINT!
-        /// This class is changed to return async
         /// </summary>
         protected override Task OnToolActivateAsync(bool active) {
-            // let the user sketch a rectangle first
-            currentStage = DrawingStage.SelectingFeatures; 
-
-            if (_attributeViewModel == null)
+            if (_attributeViewModel == null) {
                 _attributeViewModel = this.EmbeddableControl as AttributeControlViewModel;
+                _attributeViewModel.PickControlButtonClicked += SwitchToPointSketch;
+                _attributeViewModel.ShiftAndScaleButtonClicked += ShiftAndScaleFeatures;
+            }
 
             _attributeViewModel.UserPromptText = "Make a selection";
             _attributeViewModel.HasUserSelectedFeatures = false;
@@ -66,6 +61,8 @@ namespace ShiftScaleAddin {
 
         protected override Task OnToolDeactivateAsync(bool hasMapViewChanged) {
             _attributeViewModel = null;
+            RestoreBeforeExit();
+            // deselect the currently selected ones
             return Task.FromResult(true);
         }
 
@@ -74,6 +71,45 @@ namespace ShiftScaleAddin {
         /// drawing on the map.
         /// </summary>
         protected override Task<bool> OnSketchCompleteAsync(Geometry geometry) {
+            if (SketchType == SketchGeometryType.Rectangle) {
+                return ApplySelectionWithRectangle(geometry);
+            }
+            else if (SketchType == SketchGeometryType.Point) {
+                // do nothing, as it will be handled on onToolMouseDown
+            }
+
+            return Task.FromResult(true);
+        }
+
+        public void ShiftAndScaleFeatures() {
+            /* Reasons for using EditOperation class
+                1. Execute the operations against underlying datastores
+                2. Add an operation to the ArcGIS Pro OperationManager Undo / Redo stack
+                3. Invalidate any layer caches associated with the layers edited by the Edit Operation.
+
+                EditOperation is transaction-based: similar to SQL, if any part of the transaction fails, the transaction is aborted and rolled-back.
+            */
+            QueuedTask.Run(() => {
+                EditOperation scaleOperation = new EditOperation();
+                scaleOperation.Name = "Shift and Scale features";
+                double scale = _attributeViewModel.Scale;
+                scaleOperation.Scale(_attributeViewModel.SelectedFeatures, CurrentControlPoint, scale, scale, scale);
+                scaleOperation.Execute();
+
+                var shiftOperation = scaleOperation.CreateChainedOperation();
+                double dx = _attributeViewModel.X - CurrentControlPoint.X;
+                double dy = _attributeViewModel.Y - CurrentControlPoint.Y;
+                double dz = _attributeViewModel.Z - CurrentControlPoint.Z;
+
+                shiftOperation.Move(_attributeViewModel.SelectedFeatures, dx, dy, dz);
+                shiftOperation.Execute();
+
+            }); // end Run
+
+            // do we need to return queuedTask.FromResult(true)?
+        }
+
+        public Task<bool> ApplySelectionWithRectangle(Geometry rectangle) {
             // select the first point feature layer in the active map
             var pointLayer = ActiveMapView.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>().Where(layer => layer.ShapeType == ArcGIS.Core.CIM.esriGeometryType.esriGeometryPoint).FirstOrDefault();
 
@@ -84,10 +120,10 @@ namespace ShiftScaleAddin {
             QueuedTask.Run(() => {
                 var spatialQuery = new SpatialQueryFilter() {
                     // use the selected geometry to filter out elements outside the geometry
-                    FilterGeometry = geometry, 
+                    FilterGeometry = rectangle,
                     SpatialRelationship = SpatialRelationship.Contains
                 };
-                
+
                 // apply the spatial filter to the pointLayer
                 var pointSelection = pointLayer.Select(spatialQuery);
                 List<long> oids = pointSelection.GetObjectIDs().ToList();
@@ -99,30 +135,49 @@ namespace ShiftScaleAddin {
 
                 // assign the dictionary to the ViewModel such that the View will update
                 _attributeViewModel.SelectedFeatures = selectionDictionary;
-
             }); // end Run
 
-            // now that the user has made selection, change the message
-            _attributeViewModel.UserPromptText = "Change the selection";
-
-            // and display additional UI
-            _attributeViewModel.HasUserSelectedFeatures = true;
+            UpdateUIAfterSelection();
 
             return Task.FromResult(true);
-
-            // TODO: There has to be some EditOperation for us to actually move the objects
-            // to the selected point
-
-            /* Reasons for using EditOperation class
-            1. Execute the operations against underlying datastores
-            2. Add an operation to the ArcGIS Pro OperationManager Undo / Redo stack
-            3. Invalidate any layer caches associated with the layers edited by the Edit Operation.
-
-            EditOperation is transaction-based: similar to SQL, if any part of the transaction fails, the transaction is aborted and rolled-back.
-
-            Most likely be using EditOperation.Transform() to move stuff
-            */
         }
 
+        public void UpdateUIAfterSelection() {
+            // now that the user has made selection, change the message
+            _attributeViewModel.UserPromptText = "Change the selection";
+            // and display additional UIs such as forms, buttons etc.
+            _attributeViewModel.HasUserSelectedFeatures = true;
+        }
+
+        public void SwitchToPointSketch() {
+            SketchType = SketchGeometryType.Point;
+        }
+
+        public void RestoreBeforeExit() {
+            // _attributeViewModel is set to null after this, so no need to store its settings
+            SketchType = SketchGeometryType.Rectangle;
+            if (_attributeViewModel != null) {
+                _attributeViewModel.PickControlButtonClicked -= SwitchToPointSketch;
+                _attributeViewModel.ShiftAndScaleButtonClicked -= ShiftAndScaleFeatures;
+            }
+        }
+
+        protected override void OnToolMouseDown(MapViewMouseButtonEventArgs e) {
+            if (e.ChangedButton == System.Windows.Input.MouseButton.Left && SketchType == SketchGeometryType.Point)
+                //Handle the event args to get the call to the corresponding async method
+                e.Handled = true;
+        }
+
+        protected override Task HandleMouseDownAsync(MapViewMouseButtonEventArgs e) {
+            return QueuedTask.Run(() => {
+                CurrentControlPoint = MapView.Active.ClientToMap(e.ClientPoint);
+
+                // for testing
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(string.Format("X: {0} Y: {1} Z: {2}", CurrentControlPoint.X, CurrentControlPoint.Y, CurrentControlPoint.Z), "Map Coordinates");
+            });
+
+            
+        }
     }
+
 }

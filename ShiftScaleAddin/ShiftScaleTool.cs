@@ -10,30 +10,19 @@ using ArcGIS.Desktop.Editing;
 namespace ShiftScaleAddin {
     internal class ShiftScaleTool : MapTool {
         public const string ID_embeddable_control = "ShiftScaleAddin_AttributeControl";
-        #region Note
-        // the most important methods in this class are:
-        // 1. OnSketchCompleted
-        // 2. OnSketchModified
-        // 3. OnToolActivateAsync
-        // 4. OnTOolDeactivateAsync
-
-        // Only geometries in screen coordinates are supported in 3D
-
-        #endregion
 
         private AttributeControlViewModel _attributeViewModel = null;
         private MapPoint CurrentControlPoint;
 
         public ShiftScaleTool() {
-
             // indicate that you need feedback graphics
             IsSketchTool = true;
 
-            // type is initially set to rectangle => user chooses top-left & bottom right points
+            // type is initially set to rectangle => user chooses top-left & bottom right points.
             // use this attribute to also distinguish what the user has drawn, point or rectangle
             SketchType = SketchGeometryType.Rectangle;
 
-            // the cooridnate of the sketched rectangle is returned in map coordinates.
+            // the coordinate of the sketched rectangle is returned in map coordinates.
             // the alternative is SketchOutputMode.Screen
             SketchOutputMode = SketchOutputMode.Map;
 
@@ -60,9 +49,8 @@ namespace ShiftScaleAddin {
         }
 
         protected override Task OnToolDeactivateAsync(bool hasMapViewChanged) {
-            _attributeViewModel = null;
             RestoreBeforeExit();
-            // deselect the currently selected ones
+            // deselect the currently selected ones?
             return Task.FromResult(true);
         }
 
@@ -82,31 +70,64 @@ namespace ShiftScaleAddin {
         }
 
         public void ShiftAndScaleFeatures() {
-            /* Reasons for using EditOperation class
-                1. Execute the operations against underlying datastores
-                2. Add an operation to the ArcGIS Pro OperationManager Undo / Redo stack
-                3. Invalidate any layer caches associated with the layers edited by the Edit Operation.
+            if (CurrentControlPoint == null) {
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show("Control point not selected", "Error");
+                return;
+            }
 
-                EditOperation is transaction-based: similar to SQL, if any part of the transaction fails, the transaction is aborted and rolled-back.
-            */
-            QueuedTask.Run(() => {
-                EditOperation scaleOperation = new EditOperation();
-                scaleOperation.Name = "Shift and Scale features";
-                double scale = _attributeViewModel.Scale;
-                scaleOperation.Scale(_attributeViewModel.SelectedFeatures, CurrentControlPoint, scale, scale, scale);
-                scaleOperation.Execute();
+            double dx, dy, dz, scale;
+            getOffsetVectorAndScale(out dx, out dy, out dz, out scale);
+       
+            PerformShiftAndScaleEdit(dx * 1000, dy * 1000, dz * 1000);
 
-                var shiftOperation = scaleOperation.CreateChainedOperation();
-                double dx = _attributeViewModel.X - CurrentControlPoint.X;
-                double dy = _attributeViewModel.Y - CurrentControlPoint.Y;
-                double dz = _attributeViewModel.Z - CurrentControlPoint.Z;
+            //int countFeatures = 0;
+            //foreach (List<long> value in _attributeViewModel.SelectedFeatures.Values) {
+            //    countFeatures += value.Count;
+            //}
 
-                shiftOperation.Move(_attributeViewModel.SelectedFeatures, dx, dy, dz);
-                shiftOperation.Execute();
+            //ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(string.Format("dx = {0:0.000}\ndy = {1:0.000}\ndz  = {2:0.000} \nNumber of features affected = {3}", dx, dy, dz, countFeatures), "Shifting and Scaling");
 
+            RestoreUIAfterShiftAndScale();
+            SwitchToRectangleSketch();
+        }
+
+        private Task<bool> PerformShiftAndScaleEdit(double dx, double dy, double dz) {
+            return QueuedTask.Run(() => {
+                #region Note
+                //EditOperation scaleOperation = new EditOperation();
+                //scaleOperation.Name = "Shift and Scale features";
+
+                //scaleOperation.Scale(_attributeViewModel.SelectedFeatures, CurrentControlPoint, scale, scale, scale);
+                //scaleOperation.Execute();
+                //var shiftOperation = scaleOperation.CreateChainedOperation(); 
+                #endregion
+                var featuresToShift = _attributeViewModel.SelectedFeatures;
+                var pivot = CurrentControlPoint; // must assign this to another variable since we will nullify it after this operation, where this operation is async and might not execute before nullifying.
+                EditOperation shiftOperation = new EditOperation {
+                    Name = "Shift Features",
+                    ErrorMessage = "Error during shift",
+                    ProgressMessage = "Shifting in progress",
+                    // when we change this to true, it only selects features that moved (select == highlighted in blue), meaning those features will STAY highlighted. So change colour to red => not moved, even though they are selected
+                    SelectModifiedFeatures = true,
+                    ShowModalMessageAfterFailure = false
+                };
+                //shiftOperation.Scale(featuresToShift, pivot, 2, 2); // get Incompatible Spatial Reference exception => screen vs. map coordinate?
+                shiftOperation.Move(featuresToShift, dx, dy, dz);
+                //shiftOperation.Delete(featuresToShift); // this works => selection must be correct?
+                return shiftOperation.Execute();
             }); // end Run
+        }
 
-            // do we need to return queuedTask.FromResult(true)?
+        /// <summary>
+        /// returns the offset vector (ControlPoint - (x, y, z)) and the scale from inputs
+        /// </summary>
+        private void getOffsetVectorAndScale(out double dx, out double dy, out double dz, out double scale) {
+            // correct this as this is comparing metres to coordinates, depending on the
+            // coordinate system.
+            dx = _attributeViewModel.X - CurrentControlPoint.X;
+            dy = _attributeViewModel.Y - CurrentControlPoint.Y;
+            dz = 0;
+            scale = _attributeViewModel.Scale;
         }
 
         public Task<bool> ApplySelectionWithRectangle(Geometry rectangle) {
@@ -114,7 +135,7 @@ namespace ShiftScaleAddin {
             var pointLayer = ActiveMapView.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>().Where(layer => layer.ShapeType == ArcGIS.Core.CIM.esriGeometryType.esriGeometryPoint).FirstOrDefault();
 
             if (pointLayer == null)
-                return Task.FromResult(true);
+                return Task.FromResult(false);
 
             // execute on the MCT (Main CIM Thread). All Geospatial API MUST BE passed on to QueuedTask.Run as follows, or it will throw exception
             QueuedTask.Run(() => {
@@ -129,7 +150,6 @@ namespace ShiftScaleAddin {
                 List<long> oids = pointSelection.GetObjectIDs().ToList();
                 if (oids.Count == 0)
                     return;
-
                 var selectionDictionary = new Dictionary<MapMember, List<long>>();
                 selectionDictionary.Add(pointLayer as MapMember, pointSelection.GetObjectIDs().ToList());
 
@@ -149,8 +169,19 @@ namespace ShiftScaleAddin {
             _attributeViewModel.HasUserSelectedFeatures = true;
         }
 
+        public void RestoreUIAfterShiftAndScale() {
+            _attributeViewModel.UserPromptText = "Pick a selection";
+            _attributeViewModel.HasUserSelectedFeatures = false;
+        }
+
         public void SwitchToPointSketch() {
             SketchType = SketchGeometryType.Point;
+        }
+
+        public void SwitchToRectangleSketch() {
+            SketchType = SketchGeometryType.Rectangle;
+            if (CurrentControlPoint != null)
+                CurrentControlPoint = null;
         }
 
         public void RestoreBeforeExit() {
@@ -159,23 +190,32 @@ namespace ShiftScaleAddin {
             if (_attributeViewModel != null) {
                 _attributeViewModel.PickControlButtonClicked -= SwitchToPointSketch;
                 _attributeViewModel.ShiftAndScaleButtonClicked -= ShiftAndScaleFeatures;
+                _attributeViewModel = null;
             }
         }
 
+        /// <summary>
+        /// Ascertains that when a left mouse button is clicked, whether this click is to select the control point or not
+        /// </summary>
+        /// <param name="e"></param>
         protected override void OnToolMouseDown(MapViewMouseButtonEventArgs e) {
             if (e.ChangedButton == System.Windows.Input.MouseButton.Left && SketchType == SketchGeometryType.Point)
                 //Handle the event args to get the call to the corresponding async method
                 e.Handled = true;
         }
-
+        /// <summary>
+        /// Sets the control point to the clicked location
+        /// </summary>
+        /// <param name="e"></param>
+        /// <returns></returns>
         protected override Task HandleMouseDownAsync(MapViewMouseButtonEventArgs e) {
             return QueuedTask.Run(() => {
+                // this line must be called from within Run()
                 CurrentControlPoint = MapView.Active.ClientToMap(e.ClientPoint);
-
-                // for testing
-                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(string.Format("X: {0} Y: {1} Z: {2}", CurrentControlPoint.X, CurrentControlPoint.Y, CurrentControlPoint.Z), "Map Coordinates");
+                
+                // notify the user the control point is selected
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(string.Format("X: {0:0.000} \nY: {1:0.000} \nZ: {2:0.000}", CurrentControlPoint.X, CurrentControlPoint.Y, CurrentControlPoint.Z), "Control Point Picked");
             });
-
             
         }
     }

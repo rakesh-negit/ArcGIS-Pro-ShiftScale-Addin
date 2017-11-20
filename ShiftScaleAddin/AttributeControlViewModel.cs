@@ -60,33 +60,33 @@ namespace ShiftScaleAddin {
             get { return _shiftAndScaleCommand; }
         }
 
-        // Values binded to by the form
-        private int _x;
-        public int X {
+        // Values binded to by the form. MUST BE A TWO-WAY BINDING specified in XAML
+        private float _x;
+        public float X {
             get { return _x; }
             set {
                 SetProperty(ref _x, value, () => X);
             }
         }
 
-        private int _y;
-        public int Y {
+        private float _y;
+        public float Y {
             get { return _y; }
             set {
                 SetProperty(ref _y, value, () => Y);
             }
         }
 
-        private int _z;
-        public int Z {
+        private float _z;
+        public float Z {
             get { return _z; }
             set {
                 SetProperty(ref _z, value, () => Z);
             }
         }
 
-        private int _scale;
-        public int Scale {
+        private float _scale;
+        public float Scale {
             get { return _scale; }
             set {
                 SetProperty(ref _scale, value, () => Scale);
@@ -101,9 +101,10 @@ namespace ShiftScaleAddin {
 
             _shiftAndScaleCommand = new DelegateCommand<string>(
                 (s) => { ShiftAndScaleButtonClicked.Invoke();  }
-                    // check that the values in the form are all valid numbers
-                    // this can be done using MaskedTestBox
                 );
+
+            // set default scale to 1
+            Scale = 1;
         }
 
     }

@@ -127,6 +127,7 @@
     <Compile Include="Module1.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ShiftScaleTool.cs" />
+    <Compile Include="Util.cs" />
   </ItemGroup>
   <ItemGroup>
     <AddInContent Include="Images\GenericButtonRed16.png" />

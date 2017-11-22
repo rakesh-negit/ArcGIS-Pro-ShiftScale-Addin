@@ -9,6 +9,15 @@ using System;
 using System.Windows.Input;
 
 namespace ShiftScaleAddin {
+    /// <summary>
+    /// Enum used for selecting the unit of X, Y, Z values
+    /// </summary>
+    public enum CoordinateUnit {
+        m
+        //dd,
+        //dms,
+        //ddm
+    }
     internal class AttributeControlViewModel : EmbeddableControl {
 
         private Dictionary<MapMember, List<long>> _selectedFeatures = null;

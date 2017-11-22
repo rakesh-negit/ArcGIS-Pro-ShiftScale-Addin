@@ -6,6 +6,7 @@ using ArcGIS.Desktop.Mapping;
 using ArcGIS.Desktop.Framework.Threading.Tasks;
 using ArcGIS.Core.Data;
 using ArcGIS.Desktop.Editing;
+using System;
 
 namespace ShiftScaleAddin {
     internal class ShiftScaleTool : MapTool {
@@ -75,17 +76,11 @@ namespace ShiftScaleAddin {
                 return;
             }
 
-            double dx, dy, dz, scale;
-            getOffsetVectorAndScale(out dx, out dy, out dz, out scale);
+            double dx, dy, dz;
+            getOffsetVector(out dx, out dy, out dz);
+            double scale = _attributeViewModel.Scale;
        
-            PerformShiftAndScaleEdit(dx * 1000, dy * 1000, dz * 1000);
-
-            //int countFeatures = 0;
-            //foreach (List<long> value in _attributeViewModel.SelectedFeatures.Values) {
-            //    countFeatures += value.Count;
-            //}
-
-            //ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(string.Format("dx = {0:0.000}\ndy = {1:0.000}\ndz  = {2:0.000} \nNumber of features affected = {3}", dx, dy, dz, countFeatures), "Shifting and Scaling");
+            PerformShiftAndScaleEdit(dx, dy, dz);
 
             RestoreUIAfterShiftAndScale();
             SwitchToRectangleSketch();
@@ -109,32 +104,41 @@ namespace ShiftScaleAddin {
                     ProgressMessage = "Shifting in progress",
                     // when we change this to true, it only selects features that moved (select == highlighted in blue), meaning those features will STAY highlighted. So change colour to red => not moved, even though they are selected
                     SelectModifiedFeatures = true,
-                    ShowModalMessageAfterFailure = false
+                    ShowModalMessageAfterFailure = true
                 };
                 //shiftOperation.Scale(featuresToShift, pivot, 2, 2); // get Incompatible Spatial Reference exception => screen vs. map coordinate?
                 shiftOperation.Move(featuresToShift, dx, dy, dz);
                 //shiftOperation.Delete(featuresToShift); // this works => selection must be correct?
-                return shiftOperation.Execute();
+                shiftOperation.Execute();
+                int countFeatures = 0;
+                foreach (List<long> value in featuresToShift.Values) {
+                    countFeatures += value.Count;
+                }
+
+                ArcGIS.Desktop.Framework.Dialogs.MessageBox.Show(string.Format("dx = {0:0.000}\ndy = {1:0.000}\ndz  = {2:0.000} \nNumber of features affected = {3}", dx, dy, dz, countFeatures), "Shifting and Scaling");
+                return shiftOperation.IsSucceeded;
             }); // end Run
         }
 
         /// <summary>
-        /// returns the offset vector (ControlPoint - (x, y, z)) and the scale from inputs
+        /// computes the offset vector (ControlPoint - (x, y, z) from View) used for Move operation
         /// </summary>
-        private void getOffsetVectorAndScale(out double dx, out double dy, out double dz, out double scale) {
-            // correct this as this is comparing metres to coordinates, depending on the
-            // coordinate system.
-            dx = _attributeViewModel.X - CurrentControlPoint.X;
-            dy = _attributeViewModel.Y - CurrentControlPoint.Y;
-            dz = 0;
-            scale = _attributeViewModel.Scale;
+        private void getOffsetVector(out double dx, out double dy, out double dz) {
+            double controlPointLat;
+            double controlPointLon;
+            Util.CoordinateToSVY(CurrentControlPoint.Y, CurrentControlPoint.Y, out controlPointLon, out controlPointLat);
+            //dx = _attributeViewModel.X - controlPointLon;
+            //dy = _attributeViewModel.Y - controlPointLat;
+            dx = 1000; // stub
+            dy = 1000; // stub
+            dz = 0; // TODO: how to handle "sink-below-surface" elements
         }
 
         public Task<bool> ApplySelectionWithRectangle(Geometry rectangle) {
             // select the first point feature layer in the active map
-            var pointLayer = ActiveMapView.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>().Where(layer => layer.ShapeType == ArcGIS.Core.CIM.esriGeometryType.esriGeometryPoint).FirstOrDefault();
+            var layers = ActiveMapView.Map.GetLayersAsFlattenedList().OfType<FeatureLayer>();
 
-            if (pointLayer == null)
+            if (layers == null)
                 return Task.FromResult(false);
 
             // execute on the MCT (Main CIM Thread). All Geospatial API MUST BE passed on to QueuedTask.Run as follows, or it will throw exception
@@ -145,13 +149,14 @@ namespace ShiftScaleAddin {
                     SpatialRelationship = SpatialRelationship.Contains
                 };
 
-                // apply the spatial filter to the pointLayer
-                var pointSelection = pointLayer.Select(spatialQuery);
-                List<long> oids = pointSelection.GetObjectIDs().ToList();
-                if (oids.Count == 0)
-                    return;
                 var selectionDictionary = new Dictionary<MapMember, List<long>>();
-                selectionDictionary.Add(pointLayer as MapMember, pointSelection.GetObjectIDs().ToList());
+                foreach (var layer in layers) {
+                    var selection = layer.Select(spatialQuery);
+                    List<long> oids = selection.GetObjectIDs().ToList();
+                    if (oids.Count == 0)
+                        continue;
+                    selectionDictionary.Add(layer as MapMember, selection.GetObjectIDs().ToList());
+                }
 
                 // assign the dictionary to the ViewModel such that the View will update
                 _attributeViewModel.SelectedFeatures = selectionDictionary;
@@ -185,7 +190,7 @@ namespace ShiftScaleAddin {
         }
 
         public void RestoreBeforeExit() {
-            // _attributeViewModel is set to null after this, so no need to store its settings
+            // _attributeViewModel is set to null after this, so no need to restore its settings
             SketchType = SketchGeometryType.Rectangle;
             if (_attributeViewModel != null) {
                 _attributeViewModel.PickControlButtonClicked -= SwitchToPointSketch;
@@ -203,11 +208,11 @@ namespace ShiftScaleAddin {
                 //Handle the event args to get the call to the corresponding async method
                 e.Handled = true;
         }
+
         /// <summary>
-        /// Sets the control point to the clicked location
+        /// Sets the control point to the clicked location. This method is only called when e.Handled is set to true
+        /// by OnToolMouseDown
         /// </summary>
-        /// <param name="e"></param>
-        /// <returns></returns>
         protected override Task HandleMouseDownAsync(MapViewMouseButtonEventArgs e) {
             return QueuedTask.Run(() => {
                 // this line must be called from within Run()

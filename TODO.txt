@@ -1,0 +1,15 @@
+The following are TODO's (aka unresolved issues)
+
+1. Due to some unknown issue, not all selected features actually move during EditOperation.
+	Possible causes:
+	- async operation is not handled properly (this was tested however with await pattern, as well as using QueuedTask.Run())
+	- the selection itself is not correct (however, if test with EditOperation.Delete(), all the selected elements will be deleted, indicating that the selection has no problem)
+
+2. Allow for different units of distances. Currently, only metres is supported. Moreover, support different coordinate systems? Check out the link below for coordinates conversions
+	https://github.com/cgcai/SVY21/tree/master/csharp
+
+3. Scaling cannot be performed due to "Incompatible spatial reference exception". Might need to dig into the DLL and find out how scaling is performed (specifically, in ArcGIS.Core.GeometryEngine), and why it is throwing this exception. One possibility is that the MapPoint obtained from user clicked is not in the desired format.
+
+4. How to deal with dz? Some moved elements "sink under the surface"
+
+4. Improve the UI
